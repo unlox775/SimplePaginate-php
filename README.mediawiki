@@ -1,0 +1,102 @@
+==  Simple Example ==
+
+TBD ...
+
+
+==  Near-Complete Pagination Example with AngularJS and UI-Bootstrap ==
+
+=== Pagination HTML Snippet ===
+<pre>
+<uib-pagination
+		total-items="preload.listData.user_data.total"
+		ng-model="listPageState.currentPage"
+		max-size="3"
+		items-per-page="preload.listData.user_data.per_page"
+		class="pagination-sm"
+		boundary-links="true"></uib-pagination>
+
+<table ...>
+
+	   <tr ng-repeat="user in preload.listData.user_data.user_list | orderBy:sortType:sortReverse">
+	   	   ...
+		   </tr>
+
+</table>
+</pre>
+
+
+=== Make service for a "global" preload variable, I am using one called UILogic ===
+<pre>
+angular.module('adminIndexReportApp')
+.service('UILogic', function($timeout, $uibModal, ExpiringCacheFactory) {
+
+	UILogic.state = {};
+	UILogic.preload = {};
+
+});
+</pre>
+
+
+=== In controller, store preload, add watch for changes ===
+
+<pre>
+angular.module('adminIndexReportApp')
+.controller('CustomerListCtrl', function ($http, UILogic, CustomerService, CustomerData) {
+
+    $scope.preload = UILogic.preload;
+
+    $scope.listPageState = UILogic.state.CustomerListPage;
+    $scope.$watchCollection('listPageState', function() {
+	    ///  Reload the list
+		    angular.module('adminIndexReportApp').resolvers['CustomerListCtrl'].loadListData($http, UILogic)
+    });
+}).resolvers = function ... {
+
+			 ... loadListData = function ( ... ) {
+        if ( typeof UILogic.state.CustomerListPage == 'undefined' ) {
+            UILogic.state.CustomerListPage = {
+                currentPage : 1,
+                sortType    : 'lname',
+                sortReverse : true,
+            };
+        }
+
+        return $http.post('/api/customer/',UILogic.state.CustomerListPage)
+        .then(function(xhr){
+            UILogic.preload.listData = xhr.data;
+        });
+		}
+
+};
+</pre>
+
+
+=== Then here is the API controller server-side ===
+
+<pre>
+    public function indexAction__POST() {
+        $params = $this->getJSONRequest();
+        if ( empty( $params->currentPage ) ) { $params->currentPage = 1; }
+        if ( empty( $params->sortType ) ) { $params->sortType = 'name'; }
+
+        $sql = "SELECT *
+                FROM customer
+                WHERE 1";
+
+        require_once('SimplePaginate.php');
+        $paginate_spec = array(
+            'per_page' => 20,
+            );
+        $pager = paginate(\Globals::getDb(), $sql, $paginate_spec, $params->currentPage, 'ORDER BY '. $params->sortType .' '. (! empty($params->sortReverse) ? 'DESC' : 'ASC'));
+
+        return $this->standardReturnObject(array(
+            'status'            => 'success',
+            'user_data'      => array(
+                'user_list'  => $pager['results'],
+                'current_page'  => $params->currentPage,
+                'per_page'      => $paginate_spec['per_page'],
+                'total'         => $pager['pagination']['total']
+            )
+        ));
+    }
+</pre>
